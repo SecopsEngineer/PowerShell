@@ -1,0 +1,19 @@
+<#
+.DESCRIPTION
+    Created for the monthly AD Expired Accounts
+.INPUTS
+    $cred - Prompts for a credential to access AD
+    $domain - Prompts for domain to search
+.OUTPUTS
+    Produces a list of Enabled AD user accounts that are do not have an expiry date
+.NOTES
+    Created by John Skinner
+.LINK
+    
+#>
+$cred = Get-Credential
+$domain = Read-Host "What domain would you like to search? "
+
+#Get-ADUser -Filter * -Server $domain -Credential $cred -Properties AccountExpirationDate | Where-Object {($_.Enabled -eq $True) -and ($_.AccountExpirationDate -eq $null)} | Select-Object name, sAMAccountName, AccountExpirationDate
+
+Get-ADUser -Filter 'enabled -eq $true' -Properties AccountExpirationDate | Select-Object Name, sAMAccountName, distinguishedName, AccountExpirationDate
