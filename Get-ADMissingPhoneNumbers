@@ -1,0 +1,5 @@
+# Search AD for missing phone numbers
+$cred = Get-Credential
+$domain = Read-Host "What domain would you like to search? "
+
+Get-ADUser -Filter * -Server $domain -properties telephoneNumber,MobilePhone,HomePhone | Where-Object {($_.Enabled -eq $True) -and ($_.telephoneNumber -eq $null) -and ($_.MobilePhone -eq $null) -and ($_.HomePhone -eq $null)} |Select-Object Name,telephoneNumber,MobilePhone,HomePhone
