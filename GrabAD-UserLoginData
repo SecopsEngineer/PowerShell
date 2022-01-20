@@ -1,0 +1,26 @@
+<#
+.SYNOPSIS
+    Simple script to find quick information about the user
+
+.DESCRIPTION
+    This script find the Last Password Set data, the users last login date, and if the users password never expires
+
+.INPUTS    
+    This script prompts for the domain, and then prompts for the user account
+
+.OUTPUTS
+    Outputs the information to the screen
+    
+.NOTES
+    Create by John Skinner
+#>
+
+# Set Variables
+$domain = Read-Host "What domain would you like to search? "
+$user = Read-Host "What is the user ID? "
+
+# Run the Magic
+Get-ADUser $user -Server $domain -Properties passwordlastset, LastLogonDate, PasswordNeverExpires
+
+# Mark the script complete
+Write-Host "Script Complete" -ForegroundColor Green
