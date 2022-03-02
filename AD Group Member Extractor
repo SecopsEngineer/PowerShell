@@ -1,0 +1,26 @@
+<#
+.DESCRIPTION
+    AD Group Member Extractor
+.INPUTS
+    $domain - Prompts for domain to search
+    $group - Prompts for what group you are looking for
+    $filename - Builds the filename based on the group that you are searching for
+.OUTPUTS
+    Produces a list of all users in the group
+.NOTES
+    Created John Skinner
+.LINK
+    
+#>
+
+Write-Host "***************************************************************" -ForegroundColor cyan
+Write-Host "Welcome to your Friendly Neighborhood AD Group Member Extractor" -ForegroundColor cyan
+Write-Host "***************************************************************" -ForegroundColor cyan
+
+$domain = read-host "What Domain do you want to look at?"
+$group = read-host "What AD group do you want to extract?"
+$filename = 'c:\temp\ADGroup' + $group + '.csv'
+
+Get-ADGroupMember -Server $domain -Identity $group | Select-Object Name,samaccountname | Export-Csv $filename
+Write-Host "Export stored here --> $filename" -ForegroundColor yellow
+Write-Host "Script Complete!" -ForegroundColor green
