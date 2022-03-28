@@ -1,0 +1,39 @@
+<#
+.DESCRIPTION
+    Created to review group members and account creation dates
+.INPUTS
+    $domain - Prompts for domain to search
+    $group - Promptes for the group name
+.OUTPUTS
+    Produces a list of All users in the selected group, then searches that user list for AD Creation Dates
+.NOTES
+    Created by John Skinner
+.LINK
+    
+#>
+
+# PowerShell to extract members of the groups
+Write-Host "***************************************************************" -ForegroundColor cyan
+Write-Host "Welcome to your Friendly Neighborhood AD Group Member Extractor" -ForegroundColor cyan
+Write-Host "***************************************************************" -ForegroundColor cyan
+
+# Group selection variables
+$domain = read-host "What Domain do you want to look at?"
+$group = read-host "What AD group do you want to extract?"
+
+Get-ADGroupMember -Server $domain -Identity $group | Select samaccountName -ExpandProperty samaccountName | Out-File c:\temp\users.txt
+Write-Host "AD Group Extract complete, Searching creation date... this will take some time" -ForegroundColor yellow
+
+# Loop variables
+$UserNamesList = get-content -path "C:\temp\users.txt"
+$exportPath = "C:\temp\Users_Detailed.csv"
+
+# Run the magic
+foreach ($name in $UserNamesList){
+
+Get-ADUser -Server $domain $name -properties * | select Name,samaccountname,whenCreated | Export-CSV $ExportPath -Append -NoTypeInformation
+
+}
+
+Write-Host "Script Complete!" -ForegroundColor green
+Write-Host "The export file is stored here --> $ExportPath" -ForegroundColor Cyan
