@@ -1,0 +1,29 @@
+<#
+.DESCRIPTION
+    Export O365 blocked domains and blocked senders
+.Inputs
+    Date Variable - Adds the date to the filename
+    Filename variables - Adds the date to the filename
+.OUTPUTS
+    Produces a list of blocked domains and senders from O365
+.NOTES
+    Created by John Skinner
+.LINK
+    
+#>
+
+# Connect to Exchange Online
+Connect-ExchangeOnline
+
+#Set the save file
+$GetDate = (Get-date -UFormat %m-%d-%y)
+$Filename1 = 'c:\temp\BlockedDomains_' + $GetDate + '.csv'
+$Filename2 = 'c:\temp\BlockedSenders_' + $GetDate + '.csv'
+
+# Grab blocked domains
+(Get-HostedContentFilterPolicy -Identity “Default” | select BlockedSenderDomains).BlockedSenderDomains | Export-Csv $Filename1
+
+# Grab blocked senders
+(Get-HostedContentFilterPolicy -Identity “Default” | select BlockedSenders).BlockedSenders | Export-Csv $Filename2
+
+Write-Host "Script Complete" -ForegroundColor Green
