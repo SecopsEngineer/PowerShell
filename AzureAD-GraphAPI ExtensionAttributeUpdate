@@ -1,0 +1,8 @@
+# Connect with the appropriate scope, will prompt to login, use admin creds. 
+Connect-MgGraph -Scopes "Directory.AccessAsUser.All"
+
+# Set the variable that we need changed
+$params = '{ "extensionAttributes": { "extensionAttribute6": "hello" } }'
+
+# Update the extension attribute
+Update-MgDevice  -DeviceId  '<Device ObjectID>' -BodyParameter $params
