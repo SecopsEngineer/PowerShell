@@ -1,0 +1,1 @@
+Get-MgDevice -All -Search "OperatingSystem:Windows" -Property displayName,OperatingSystemVersion,OnPremisesLastSyncDateTime  -CountVariable CountVar -ConsistencyLevel eventual | Select-Object displayName,OperatingSystemVersion,OnPremisesLastSyncDateTime
