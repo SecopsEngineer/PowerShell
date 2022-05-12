@@ -1,0 +1,1 @@
+Get-MgDevice -All -Property displayName,OperatingSystemVersion,OnPremisesLastSyncDateTime,isCompliant -CountVariable CountVar -ConsistencyLevel eventual | Select-Object displayName,OperatingSystemVersion,OnPremisesLastSyncDateTime,IsCompliant
