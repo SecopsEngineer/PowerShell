@@ -3,7 +3,7 @@
 # 
 #
 # Connect to the Graph, specifying the tenant and profile to use - Add your tenant identifier here
-Connect-MgGraph -TenantId 01f3a409-b48f-4f2c-b95b-7ea1977a06ed -Scope Auditlog.Read.All
+Connect-MgGraph -TenantId TENANTID -Scope Auditlog.Read.All
 Select-MgProfile beta # Beta needed to get more informtion from the Graph
 $Details = Get-MgContext
 $Scopes = $Details | Select -ExpandProperty Scopes
