@@ -1,0 +1,21 @@
+# Create a variable to store the username
+$username = Read-Host -Prompt "Please enter the username" 
+
+# Get the user object
+$user = Get-ADUser -Filter {samaccountname -eq $username}
+
+# Check if the user object exists
+if ($user)
+{
+    # Get the account creation date  
+    $created = $user.whenCreated
+    # Get the creator of the account
+    $creator = (Get-ADUser -Filter {distinguishedName -eq $user.createdby}).name
+
+    # Output the results
+    Write-Host "The user account was created on $created by $creator"
+} 
+else
+{
+    Write-Host "The user does not exist"
+}
