@@ -1,0 +1,10 @@
+#Set date to 30 days ago
+$date = (Get-Date).AddDays(-30)
+
+# Get all AD users created in the last 30 days
+$users = Get-ADUser -Filter {whenCreated -ge $date} -Properties whenCreated,CreatedBy
+
+# Output results
+foreach ($user in $users) {
+    Write-Output "Account Name: $($user.Name) | Created By: $($user.CreatedBy) | Created On: $($user.whenCreated)"
+}
