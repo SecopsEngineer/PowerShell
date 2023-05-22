@@ -1,0 +1,39 @@
+# This script was written with the help of AI (ChatGPT)
+# Created by John Skinner
+
+# Prompt for domain selection
+$domain = Read-Host "Enter the domain name"
+
+# Prompt for the path to the text file containing the user list
+$filePath = Read-Host "Enter the path to the text file containing the user list"
+
+# Read the user list from the text file
+$users = Get-Content $filePath
+
+# Array to store user information
+$userInfo = @()
+
+# Retrieve user information from the selected domain
+foreach ($user in $users) {
+    $userObject = Get-ADUser -Filter {SamAccountName -eq $user} -Properties Enabled -ErrorAction SilentlyContinue
+    if ($userObject) {
+        $status = if ($userObject.Enabled) { "Enabled" } else { "Disabled" }
+        $userRow = [PSCustomObject]@{
+            User = $userObject.Name
+            Enabled = $status
+        }
+    } else {
+        $userRow = [PSCustomObject]@{
+            User = $user
+            Enabled = "User not found"
+        }
+    }
+    $userInfo += $userRow
+}
+
+# Output user information as a table & CSV
+$userInfo | Format-Table -AutoSize
+$filepath = 'c:\temp\EnableORDisabledUsers' + '-' + $domain + '.csv'
+$userinfo | Export-Csv -path $filePath -NoTypeInformation
+
+Write-Host "User information exported to $filePath" -ForegroundColor Yellow
