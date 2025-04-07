@@ -1,0 +1,122 @@
+# DefenderToolkit.ps1
+
+function Show-Banner {
+    Clear-Host
+    Write-Host ""
+    Write-Host "======================================================" -ForegroundColor Cyan
+    Write-Host "                  DEFENDER TOOLKIT" -ForegroundColor Green
+    Write-Host "     Manage Microsoft Defender with PowerShell" -ForegroundColor DarkGray
+    Write-Host "          Run Powershell as administrator" -ForegroundColor Cyan
+    Write-Host "======================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Pause-And-Return {
+    Write-Host ""
+    Read-Host "Press Enter to return to the menu"
+}
+
+function Show-Menu {
+    Show-Banner
+    Write-Host " [1]  Get Defender Status" -ForegroundColor Yellow
+    Write-Host " [2]  Update Definitions" -ForegroundColor Yellow
+    Write-Host " [3]  Quick Scan" -ForegroundColor Yellow
+    Write-Host " [4]  Full Scan" -ForegroundColor Yellow
+    Write-Host " [5]  Custom Scan" -ForegroundColor Yellow
+    Write-Host " [6]  Show Threat Detections" -ForegroundColor Yellow
+    Write-Host " [7]  Remove Detected Threats" -ForegroundColor Yellow
+    Write-Host " [8]  View Defender Preferences" -ForegroundColor Yellow
+    Write-Host " [9]  Add Folder Exclusion" -ForegroundColor Yellow
+    Write-Host " [10] Disable Real-Time Protection" -ForegroundColor Yellow
+    Write-Host " [11] Enable Real-Time Protection" -ForegroundColor Yellow
+    Write-Host " [12] Enable Passive Mode (Registry)" -ForegroundColor Yellow
+    Write-Host " [13] Exit" -ForegroundColor Red
+    Write-Host ""
+}
+
+do {
+    Show-Menu
+    $choice = Read-Host "Enter your choice (1-13)"
+
+    switch ($choice) {
+        '1' {
+            Get-MpComputerStatus
+            Pause-And-Return
+        }
+        '2' {
+            Update-MpSignature
+            Write-Host "`nDefinitions updated." -ForegroundColor Green
+            Pause-And-Return
+        }
+        '3' {
+            Start-MpScan -ScanType QuickScan
+            Write-Host "`nQuick scan started." -ForegroundColor Green
+            Pause-And-Return
+        }
+        '4' {
+            Start-MpScan -ScanType FullScan
+            Write-Host "`nFull scan started." -ForegroundColor Green
+            Pause-And-Return
+        }
+        '5' {
+            $path = Read-Host "Enter the folder path to scan"
+            if (Test-Path $path) {
+                Start-MpScan -ScanType CustomScan -ScanPath $path
+                Write-Host "`nCustom scan started." -ForegroundColor Green
+            } else {
+                Write-Host "`nPath not found." -ForegroundColor Red
+            }
+            Pause-And-Return
+        }
+        '6' {
+            Get-MpThreatDetection
+            Pause-And-Return
+        }
+        '7' {
+            Remove-MpThreat
+            Write-Host "`nThreats removed (if any)." -ForegroundColor Green
+            Pause-And-Return
+        }
+        '8' {
+            Get-MpPreference
+            Pause-And-Return
+        }
+        '9' {
+            $excl = Read-Host "Enter the full path to exclude"
+            if (Test-Path $excl) {
+                Add-MpPreference -ExclusionPath $excl
+                Write-Host "`nExclusion added." -ForegroundColor Green
+            } else {
+                Write-Host "`nPath not found." -ForegroundColor Red
+            }
+            Pause-And-Return
+        }
+        '10' {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Write-Host "`nReal-time protection disabled (temporary)." -ForegroundColor Red
+            Pause-And-Return
+        }
+        '11' {
+            Set-MpPreference -DisableRealtimeMonitoring $false
+            Write-Host "`nReal-time protection enabled." -ForegroundColor Green
+            Pause-And-Return
+        }
+        '12' {
+            try {
+                New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "PassiveMode" -Value 1 -Type DWord
+                Write-Host "`nPassive Mode enabled in registry. A reboot is required." -ForegroundColor Cyan
+            } catch {
+                Write-Host "`nFailed to write to registry. Are you running as Administrator?" -ForegroundColor Red
+            }
+            Pause-And-Return
+        }
+        '13' {
+            Write-Host "`nExiting... Stay safe out there!" -ForegroundColor Magenta
+        }
+        default {
+            Write-Host "`nInvalid selection. Try again." -ForegroundColor Red
+            Pause-And-Return
+        }
+    }
+} while ($choice -ne '13')
