@@ -1,79 +1,72 @@
-####################################################
-##                                                ##
-## Block Legacy Authentication in Office365       ##
-## Date: 09/26/21                                 ##
-## Create by: John Skinner                        ##
-##                                                ##
-####################################################
-<#
+﻿<#
 .SYNOPSIS
-    Block Basic Authentication in Office265
+Apply an Exchange Online authentication policy or explicitly restore saved assignments.
 .DESCRIPTION
-    As of Feb 2021, Microsoft has put on hold disabling legacy authentication protocols. However this disablement is still coming and therefore
-    we have need to design a solution to disable legacy protocols
-
-    Note: This script will need to be run from Exchange Online Powershell, there for you must run the following command first to connect
-
-    "Connect-ExchangeOnline"
-    Then Authenticate with your credentials. 
-
-    This script works by creating an authentications policy to block legacy auth. 
-    - Block Basic Auth - Blocks all legacy authentication protocols
-
-    Note - Exchange Active Sync is blocked at the Tenant level and is not included in this solution at this time
-
-    The Script below uses the "New-AuthenticationPolicy" cmdlet to create the policy and name it accordingly
-    Once the policy is created, the "Get-AuthticationPolicy" cmdlet can be used to verify the policy and the settings
-
-    At this point a text file of the users will need to be created. This information is in the "Inputs" section of the comments here
-    It is important that the text file is formatted exactly as noted in these comments. 
-
-    Once the text file is verified for all users that this policy needs to be applied to, we can then run the rest of the script
-    to apply the authentication policy to those users. 
-
-    The script runs a simply loop against users in the text file to apply the policy
-
-    Reverting:
-    If we need to revert the script, or set the users back to the way they were configured before, We can run the last 2 lines of this script
-    to rest the users to the old auth policy that was originally configured. 
-    
-.INPUTS
-    Use a list of specific user accounts: This method requires a text file to identify the user accounts. 
-    Values that don't contain spaces (for example, the Office 365 or Microsoft 365 work or school account) work best. 
-    The text file must contain one user account on each line like this:
-
-    akol@contoso.com
-    tjohnston@contoso.com
-    kakers@contoso.com   
-
-    The users variable below should point to the location of this text file
-.OUTPUTS
-    There are no specific outputs for this script other than making the configuration changes to the users Auth Policy
-
-.NOTES
-    
-.LINK
-    https://docs.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/disable-basic-authentication-in-exchange-online
-    https://docs.microsoft.com/en-us/azure/active-directory/conditional-access/block-legacy-authentication
-    https://docs.microsoft.com/en-us/powershell/module/exchange/new-authenticationpolicy?view=exchange-ps
-    https://docs.microsoft.com/en-us/powershell/module/exchange/remove-authenticationpolicy?view=exchange-ps
+Connect-ExchangeOnline first with Exchange RBAC policy/user management rights.
+Apply saves previous assignments BEFORE changes. Restore is a separate invocation.
+A null assignment inherits the tenant default. Changes may take time to propagate.
+Authentication policies do not replace Conditional Access.
+.EXAMPLE
+.\BlockLegacyAuthentication.ps1 -Mode Apply -UserListPath .\users.txt -BackupPath .\before.csv -WhatIf
+.EXAMPLE
+.\BlockLegacyAuthentication.ps1 -Mode Restore -RestoreSavedAssignments -BackupPath .\before.csv
 #>
-
-# Create Auth Policy to block basic authentication (Make sure this has all protocols listed)
-New-AuthenticationPolicy -Name "BlockBasicAuth" -BlockLegacyAuthAutodiscover -BlockLegacyAuthImap -BlockLegacyAuthMapi -BlockLegacyAuthOfflineAddressBook -BlockLegacyAuthOutlookService -BlockLegacyAuthPop -BlockLegacyAuthRpc -BlockLegacyAuthWebServices
-
-# Get All authtications policies list
-Get-AuthenticationPolicy | Format-Table Name -Auto
-
-# Verify the new authentication policy created successfully
-Get-ADAuthenticationPolicy -Identity "BlockBasicAuth"
-
-# Set users auth policy to block basic auth
-$users = Get-Content "C:\temp\users.txt"
-$users | ForEach-Object {Set-User -Identity $_ -AuthenticationPolicy "BlockBasicAuth" -STSRefreshTokensValidFrom $([System.DateTime]::UtcNow)}
-
-# Revert the changes
-# Set users auth policy to to $null, effectively removing the policy from the users assignment
-$users = Get-Content "C:\temp\users.txt"
-$users | ForEach-Object {Set-User -Identity $_ -AuthenticationPolicy "$null" -STSRefreshTokensValidFrom $([System.DateTime]::UtcNow)}
-
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'Apply')]
+param(
+    [Parameter(Mandatory)][ValidateSet('Apply', 'Restore')][string]$Mode,
+    [Parameter(Mandatory, ParameterSetName = 'Apply')][string]$UserListPath,
+    [Parameter(Mandatory)][string]$BackupPath,
+    [Parameter(ParameterSetName = 'Apply')][ValidateNotNullOrEmpty()][string]$PolicyName = 'BlockBasicAuth',
+    [Parameter(Mandatory, ParameterSetName = 'Restore')][switch]$RestoreSavedAssignments
+)
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/Private/Common.ps1"
+if ($Mode -eq 'Restore' -and -not $RestoreSavedAssignments) { throw 'Explicitly select -RestoreSavedAssignments.' }
+if ($Mode -ne $PSCmdlet.ParameterSetName) { throw 'Apply requires -UserListPath; Restore requires -RestoreSavedAssignments.' }
+$connection = @(Get-ConnectionInformation -ErrorAction Stop | Where-Object { $_.State -eq 'Connected' })
+if ($connection.Count -ne 1) { throw 'Connect exactly one Exchange Online session before running.' }
+$organizationId = [string](Get-OrganizationConfig -ErrorAction Stop).Guid
+if (-not $organizationId) { throw 'Unable to identify the Exchange organization.' }
+if ($Mode -eq 'Apply') {
+    $users = @(Read-ToolkitIdentityList -Path $UserListPath | ForEach-Object { Get-User -Identity $_ -ErrorAction Stop })
+    $backup = @($users | ForEach-Object {
+        [pscustomobject]@{ OrganizationId = $organizationId; Identity = [string]$_.UserPrincipalName; AuthenticationPolicy = [string]$_.AuthenticationPolicy }
+    })
+    if (@($backup | Where-Object { -not $_.Identity }).Count) { throw 'A user has no UPN; no changes made.' }
+    $policy = @(Get-AuthenticationPolicy -ErrorAction Stop | Where-Object { $_.Name -eq $PolicyName })
+    if ($policy.Count -gt 1) { throw 'Ambiguous authentication policy.' }
+    if ($policy.Count -eq 1) {
+        $flags = @($policy[0].PSObject.Properties | Where-Object { $_.Name -like 'AllowBasicAuth*' })
+        if (-not $flags.Count -or @($flags | Where-Object { $_.Value -eq $true }).Count) { throw 'Existing policy does not verifiably block all Basic authentication protocols.' }
+    }
+    if ($PSCmdlet.ShouldProcess("$($users.Count) users in $organizationId", "Save $BackupPath and apply $PolicyName")) {
+        Export-ToolkitReport -InputObject $backup -Path $BackupPath
+        if (-not $policy.Count) {
+            # No AllowBasicAuth switches: Exchange Online blocks all protocols.
+            $null = New-AuthenticationPolicy -Name $PolicyName -Confirm:$false -ErrorAction Stop
+        }
+        foreach ($user in $users) {
+            Set-User -Identity $user.UserPrincipalName -AuthenticationPolicy $PolicyName -Confirm:$false -ErrorAction Stop
+            $actual = Get-User -Identity $user.UserPrincipalName -ErrorAction Stop
+            if (-not $actual.AuthenticationPolicy -or (Get-AuthenticationPolicy -Identity $actual.AuthenticationPolicy -ErrorAction Stop).Name -ne $PolicyName) { throw "Policy verification failed: $($user.UserPrincipalName). Backup: $BackupPath" }
+            [pscustomobject]@{ Identity = $user.UserPrincipalName; Status = 'Applied'; Policy = $PolicyName }
+        }
+    }
+} else {
+    $rows = @(Import-Csv -LiteralPath $BackupPath)
+    if (-not $rows.Count) { throw 'Backup is empty.' }
+    foreach ($row in $rows) {
+        if (-not $row.Identity -or $row.OrganizationId -ne $organizationId -or 'AuthenticationPolicy' -notin $row.PSObject.Properties.Name) { throw 'Invalid backup or wrong organization.' }
+        $null = Get-User -Identity $row.Identity -ErrorAction Stop
+        if ($row.AuthenticationPolicy) { $null = Get-AuthenticationPolicy -Identity $row.AuthenticationPolicy -ErrorAction Stop }
+    }
+    foreach ($row in $rows) {
+        if ($PSCmdlet.ShouldProcess($row.Identity, 'Restore saved authentication policy')) {
+            $previous = if ($row.AuthenticationPolicy) { $row.AuthenticationPolicy } else { $null }
+            Set-User -Identity $row.Identity -AuthenticationPolicy $previous -Confirm:$false -ErrorAction Stop
+            $actual = Get-User -Identity $row.Identity -ErrorAction Stop
+            if ([string]$actual.AuthenticationPolicy -ne [string]$previous) { throw "Restore verification failed: $($row.Identity)" }
+            [pscustomobject]@{ Identity = $row.Identity; Status = 'Restored'; Policy = $previous }
+        }
+    }
+}

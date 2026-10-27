@@ -1,0 +1,7 @@
+# Reports can contain personal or security-sensitive information.
+*.csv
+*.sqlite
+*.db
+TestResults*.xml
+coverage.xml
+.vscode/

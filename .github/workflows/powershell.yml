@@ -1,0 +1,42 @@
+name: PowerShell validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned test tools
+        shell: ${{ matrix.shell }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          if (-not (Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue)) {
+            $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+          }
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Scope CurrentUser -Force -Repository PSGallery
+          $archive = Join-Path $env:RUNNER_TEMP sqlite.zip
+          Invoke-WebRequest https://www.sqlite.org/2026/sqlite-tools-win-x64-3540100.zip -OutFile $archive -UseBasicParsing
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne 'FB20997ADE5583A5FBF1E36DB7BC3C82C9416B3F314F16961E1572AA4E49487D') { throw 'SQLite checksum mismatch' }
+          $directory = Join-Path $env:RUNNER_TEMP sqlite
+          Expand-Archive $archive -DestinationPath $directory -Force
+          "TOOLKIT_TEST_SQLITE=$directory\sqlite3.exe" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Parse, analyze and run offline regression tests
+        shell: ${{ matrix.shell }}
+        run: ./tools/Test-Repository.ps1
