@@ -1,52 +1,35 @@
-<#
-Verify credentials against Active directory
-
-This script will allow you to verify the credentials for a user
-Prompts you for a user name and prompts for a secure password entry
-
+﻿<#
+.SYNOPSIS
+Validate one supplied credential against the selected AD domain.
+.DESCRIPTION
+Windows only. Failed attempts can contribute to account lockout. The directory API
+requires a transient managed plaintext string; it cannot be reliably zeroed by .NET.
+The unmanaged BSTR is always zeroed and freed, and the directory context disposed.
+.EXAMPLE
+.\verify-credentials.ps1 -Domain example.com -Credential (Get-Credential)
 #>
-param (
-   [Parameter(Mandatory=$true)] [string] $user
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Domain,
+    [Parameter(Mandatory)][pscredential]$Credential
 )
-
-Function Test-UserCredentials
-{ 
-    param(
-        [Parameter(Mandatory=$True)]
-        [string] $LoginName,
-
-        [Parameter(Mandatory=$True)]
-        [string] $Password
-    )
-
-    Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-    $DS = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('domain')
-    $result = $DS.ValidateCredentials($LoginName, $Password)
-
-    If ($result)
-    {
-        Write-Host "$LoginName - The account successfully authenticated, the password is correct." -ForegroundColor green
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+$context = $null
+$pointer = [IntPtr]::Zero
+$plainPassword = $null
+try {
+    $context = [System.DirectoryServices.AccountManagement.PrincipalContext]::new(
+        [System.DirectoryServices.AccountManagement.ContextType]::Domain, $Domain)
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    [pscustomobject]@{
+        Domain = $Domain
+        UserName = $Credential.UserName
+        Authenticated = $context.ValidateCredentials($Credential.UserName, $plainPassword)
     }
-    Else
-    {
-        Write-Host "$LoginName - Authentication failed with the provided password." -ForegroundColor red
-    }
-    
-    return $result
+} finally {
+    if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+    $plainPassword = $null
+    if ($null -ne $context) { $context.Dispose() }
 }
-
-Write-Host "(BEFORE) Account Status:`n"
-net user $user /domain
-
-$securePassword = Read-Host -Prompt "Enter password" -AsSecureString
-$BSTR = `
-    [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-$plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-
-Test-UserCredentials "$user" "$plainPassword"
-
-pause
-
-Write-Host "`n(AFTER) Account Status:"
-net user $user /domain
-

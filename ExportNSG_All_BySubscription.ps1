@@ -1,89 +1,60 @@
-﻿##############################################################################################
-## This script was created in response to a need to export all NSG details for Audit        ##
-##                                                                                          ##
-##                                                                                          ##  
-## Created by John Skinner                                                                  ##
-##############################################################################################
-
-<#
-.Synopsis
-   Export NSG's to CSV Files for Audit Review
-
+﻿<#
+.SYNOPSIS
+Export NSG rules for explicitly selected subscriptions in one tenant.
 .DESCRIPTION
-   This script will login to Azure and pull the NSGs from all Subscriptions, exporting them to CSV's
-
-.INPUTS
-   Inputs from this script are as follows
-
-   .NSG details from Azure
-
-.OUTPUTS
-   Outputs from this script are as follows
-   
-   .Individual CSV files for each NSG
-   .This CSV is formatted to show all the inbound and outbound rules
-
-.NOTES
-   This script could also be used to backup NSG's to CSV, if new Subscriptions are added, 
-   the #sub_names variable will need to be modified belo 
-
-.ROLE
-   The role this cmdlet belongs to Secops
-
-.REVISION
-    June 25, 2020 - Initial Script creation and testing
-    
+Connect-AzAccount first. Requires Reader access. Includes default rules, plural
+address/port fields, ASGs and subscription/resource identity. Temporarily switches the
+active Azure context and restores it in finally. The CSV is an audit report, not a restorable NSG backup.
+.EXAMPLE
+.\ExportNSG_All_BySubscription.ps1 -TenantId TENANT-GUID -SubscriptionId SUB-GUID -OutputPath .\rules.csv
 #>
-
-Import-Module AZ
-
-#Connect-AzureRmAccount <---- OLD Command
-connect-azaccount
-$exportPath = 'UNC Path to a server location (e.g. \\server\folder)'
-
-#get all subscriptions
-$sub_names = "subscriptionname1","subscriptionname2","subscriptionname3","subscriptionname4"
-$subs = get-azsubscription | where {$sub_Names -contains $_.name}
-
-#new array to hold results
-$nsgs = new-object system.collections.arraylist
-
-#cycle through each Subscription
-foreach ($subscription in $subs){
-    write-host "Working on the"$subscription.name "Subscription.." -ForegroundColor cyan
-    Select-AzSubscription $subscription
-
-    #$nsgs = Get-AzureRmNetworkSecurityGroup <---- OLD Command (using new "Get-AzNetworkSecurityGroup")
-    $Temp_nsgs = Get-AzNetworkSecurityGroup
-    foreach ($nsg in $Temp_nsgs) {$nsgs.Add($nsg)|out-null}
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$TenantId,
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$SubscriptionId,
+    [Parameter(Mandatory)][string]$OutputPath,
+    [switch]$Force
+)
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/Private/Common.ps1"
+$initialContext = Get-AzContext -ErrorAction Stop
+if (-not $initialContext -or $initialContext.Tenant.Id -ne $TenantId) { throw 'Connect-AzAccount to the requested tenant first.' }
+$subscriptions = @(Get-AzSubscription -TenantId $TenantId -ErrorAction Stop | Where-Object { $_.Id -in $SubscriptionId })
+foreach ($id in $SubscriptionId) {
+    if ($id -notin $subscriptions.Id) { throw "Subscription not accessible in tenant: $id" }
+}
+$rows = @(foreach ($subscription in $subscriptions) {
+    # Select each subscription explicitly and restore the caller context even if collection fails.
+    try {
+        $context = Set-AzContext -SubscriptionId $subscription.Id -Tenant $TenantId -Scope Process -ErrorAction Stop
+        foreach ($nsg in (Get-AzNetworkSecurityGroup -DefaultProfile $context -ErrorAction Stop)) {
+            foreach ($rule in (@($nsg.SecurityRules) + @($nsg.DefaultSecurityRules) | Where-Object { $null -ne $_ } | Sort-Object Direction, Priority)) {
+                [pscustomobject]@{
+                    SubscriptionId = $subscription.Id
+                    SubscriptionName = $subscription.Name
+                    ResourceId = $nsg.Id
+                    NSGName = $nsg.Name
+                    ResourceGroup = $nsg.ResourceGroupName
+                    Location = $nsg.Location
+                    RuleName = $rule.Name
+                    Description = $rule.Description
+                    Priority = $rule.Priority
+                    Direction = $rule.Direction
+                    Access = $rule.Access
+                    Protocol = $rule.Protocol
+                    SourceAddresses = (@($rule.SourceAddressPrefix) + @($rule.SourceAddressPrefixes) | Where-Object { $_ }) -join ';'
+                    SourcePorts = (@($rule.SourcePortRange) + @($rule.SourcePortRanges) | Where-Object { $_ }) -join ';'
+                    DestinationAddresses = (@($rule.DestinationAddressPrefix) + @($rule.DestinationAddressPrefixes) | Where-Object { $_ }) -join ';'
+                    DestinationPorts = (@($rule.DestinationPortRange) + @($rule.DestinationPortRanges) | Where-Object { $_ }) -join ';'
+                    SourceApplicationSecurityGroups = @($rule.SourceApplicationSecurityGroups | ForEach-Object { $_.Id }) -join ';'
+                    DestinationApplicationSecurityGroups = @($rule.DestinationApplicationSecurityGroups | ForEach-Object { $_.Id }) -join ';'
+                    IsDefault = $rule.Name -in @($nsg.DefaultSecurityRules | ForEach-Object { $_.Name })
+                }
+            }
+        }
+    } finally {
+        $null = Set-AzContext -Context $initialContext -Scope Process -ErrorAction Stop
     }
-
-write-host "Found"$nsgs.count "NSG's..." -ForegroundColor cyan
-
-Foreach ($nsg in $nsgs) {
-   $nsgRules = $nsg.SecurityRules + $nsg.DefaultSecurityRules
-   $nsgrules = $nsgRules |Sort-Object direction,Priority
-   
-  foreach ($nsgRule in $nsgRules) {
-   [string]$source_address = $nsgrule.SourceAddressPrefix
-   [string]$source_port = $nsgrule.SourcePortRange
-   [string]$dest_address = $nsgrule.DestinationAddressPrefix
-   [string]$destport = $nsgrule.DestinationPortRange
-   $NSG_Obj = [PSCustomObject]@{
-      "NSG Name" = $nsg.Name
-      "NSG location" = $nsg.Location
-      "NSG Resource Group" = $nsg.ResourceGroupName
-      "Rule Name" = $nsgrule.Name
-      "Rule Description" = $nsgrule.Description
-      "Rule Priority" = $nsgrule.Priority
-      "Rule Source Address" = $source_address
-      "Rule Source Port Range" = $source_port
-      "Rule Destination Address" = $dest_address
-      "Rule Destination Port Range" = $destport
-      "Rule Protocol" = $nsgrule.Protocol
-      "Rule Access" = $nsgrule.Access
-      "Rule Direction" = $nsgrule.Direction  
-   }
-   $NSG_Obj | Export-Csv "$exportPath\all_rules.csv" -NoTypeInformation -Encoding ASCII -Append
-   } #end rule
-} #end NSG
+})
+Export-ToolkitReport -InputObject $rows -Path $OutputPath -Force:$Force
+$rows

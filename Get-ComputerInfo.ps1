@@ -1,52 +1,29 @@
 ﻿<#
 .SYNOPSIS
-    Get Computer info
+Read OS, logged-on user and installed hotfix inventory through a CIM session.
 .DESCRIPTION
-    This tool returns a variety of information about an AD user and prompts for the user name
-
+Requires remote CIM/WinRM access. Credentials are optional; the current identity is
+used otherwise. The session is always removed. Output remains structured.
 .EXAMPLE
-    No examples at this time. 
-    
-.INPUTS
-    $cred - This prompts the user for credentials
-        Note - Be sure to use the credentials in the right domain
-        for which the target system resides. (e.g. bbcgrp\username or bbc\username)
-    $comp - This prompts the suer for the computer name or target that we are searching for
-        Note - This will accept a computer name or an IP address
-.OUTPUTS
-    - OS version of the remote computer to the screen
-    - Current Logged on user of the remote computer
-    - All hotfix installs on the remote computer
-    
-.NOTES
-    Created by John Skinner
-
-    When prompted for your credentials, be sure to loggin to the domain where the target computer exists
-    Or this script will not be able to find the target computer. 
-    
-.LINK
-    
+.\Get-ComputerInfo.ps1 -ComputerName server01 -Credential (Get-Credential)
 #>
-
-# Get and store credentials and Prompte for Computer name or IP Address
-# When prompted for your credentials, be sure to loggin to the domain where the target computer exists
-$cred = Get-Credential
-$comp = Read-Host -Prompt 'Enter the Computer Name or IP address'
-
-    Write-host "Getting Basic Computer Info..." -ForegroundColor cyan
-
-#Get OS version on remote system
-Get-WmiObject Win32_OperatingSystem -ComputerName $comp -Credential $cred |
-Select PSComputerName, Caption, OSArchitecture, Version, BuildNumber | FL
-
-    Write-host "Getting Current Logged in User..." -ForegroundColor cyan
-
-# Get Current logged on user
-Get-WmiObject -ComputerName $comp -Credential $cred -Class Win32_ComputerSystem | Select-Object UserName
-
-    Write-host "Getting all installed Hotfix's..." -ForegroundColor cyan
-
-#Get hotfix installed on remote computer
-Get-HotFix -ComputerName $comp -Credential $cred
-
-    Write-host "Script Complete!" -ForegroundColor green
+[CmdletBinding()]
+param([Parameter(Mandatory)][string]$ComputerName, [pscredential]$Credential)
+$ErrorActionPreference = 'Stop'
+$query = @{ ComputerName = $ComputerName }
+if ($Credential) { $query.Credential = $Credential }
+$session = New-CimSession @query -ErrorAction Stop
+try {
+    $os = Get-CimInstance -CimSession $session -ClassName Win32_OperatingSystem -ErrorAction Stop
+    $computer = Get-CimInstance -CimSession $session -ClassName Win32_ComputerSystem -ErrorAction Stop
+    [pscustomobject]@{
+        ComputerName = $ComputerName
+        Caption = $os.Caption
+        OSArchitecture = $os.OSArchitecture
+        Version = $os.Version
+        BuildNumber = $os.BuildNumber
+        LoggedOnUser = $computer.UserName
+        HotFixes = @(Get-CimInstance -CimSession $session -ClassName Win32_QuickFixEngineering -ErrorAction Stop |
+            Select-Object HotFixID, Description, InstalledOn)
+    }
+} finally { Remove-CimSession -CimSession $session -ErrorAction Stop }

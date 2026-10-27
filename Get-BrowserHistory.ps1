@@ -1,429 +1,136 @@
-﻿function Get-BrowserHistory {
-    <#
-    .SYNOPSIS
-        Gets web browsing history
-
-    .DESCRIPTION
-        Parses Chrome and IE browser history. Optionally refines the results by username and/or URL.
-
-    .PARAMETER ComputerName
-        The computer name to get browsing history from. Defaults to localhost (actually... `$env:COMPUTERNAME)
-        Accepts values from the pipeline.
-
-    .PARAMETER UserName
-        RegEx to match the desired username. Defaults to '.' (All characters, excluding newline)
-
-    .PARAMETER SearchTerm
-        RegEx to match the desired SearchTerm. Used to filter based on URL.
-        Defaults to '.' (All characters, excluding newline)
-
-    .PARAMETER AsJob
-        Switch to use PSRemoting Jobs
-
-    .EXAMPLE
-        Get-BrowserHistory -ComputerName host1
-        Gets browsing history for all users on host1.
-
-    .EXAMPLE
-        'host1','host2','host3' | Get-BrowserHistory -UserName user1 -SearchTerm evil
-        Gets browsing history for user1 on host1, host2, and host3 where the URL matches 'evil'
-
-    .INPUTS
-        System.Object
-        Microsoft.ActiveDirectory.Management.ADComputer
-
-    .OUTPUTS
-        System.Management.Automation.PSCustomObject
-
-    .NOTES
-        This script must be run with your admin account that has access to pull this data
-
-    #>
-
-    [CmdletBinding()]
-    [OutputType([psobject])]
-
-    param (
-
-        [parameter(ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
-        [Alias('PSComputerName','DNSHostName','CN','Hostname')]
-        [string[]]
-        $ComputerName,
-
-        [string]
-        $UserName = '.',
-
-        [string]
-        $SearchTerm = '.',
-
-        [switch]
-        $AsJob
-
-    ) #param
-
-    begin {
-
-        <#
-            This code currently supports parsing Chrome, IE, and FireFox history.
-            Roadmap: Include Timestamps, Include Visit Count
-        #>
-
-        if (-not $ComputerName) {
-
-            $ComputerName = $env:COMPUTERNAME
-
-        } #if
-
-        Write-Verbose -Message 'Start of function definitions.'
-
-        function Get-ChromeHistory {
-
-            [CmdletBinding()]
-            [OutputType([psobject])]
-
-            param (
-
-                [string]
-                $UserName,
-
-                [string]
-                $SearchTerm,
-
-                [string]
-                $UrlRegex = '(htt(p|ps))://([\w-]+\.)+[\w-]+(/[\w- ./?%&=]*)*?',
-
-                [string]
-                $UserExpression = '$(Split-Path -Path $(Resolve-Path -Path "$_\..\..\..\..\..\..\..") -Leaf)'
-
-            ) #param
-
-            begin {} #begin
-
-            process {
-
-                Resolve-Path -Path "$env:SystemDrive\Users\*\AppData\Local\Google\Chrome\User Data\Default\History" |
-
-                Where-Object { $($UserExpression | Invoke-Expression) -match $UserName } |
-
-                ForEach-Object {
-
-                    $SourceFile = $_
-
-                    $UserProfile = $($UserExpression | Invoke-Expression)
-
-                    Get-Content -Path $SourceFile |
-
-                    Select-String -Pattern $UrlRegex -AllMatches |
-
-                    ForEach-Object { ($_.Matches).Value } |
-
-                    Sort-Object -Unique |
-
-                    ForEach-Object {
-
-                        $EachUrl = $_
-
-                        $DomainName = $EachUrl -replace 'http:\/\/','' -replace 'https:\/\/','' -replace '\/.*',''
-
-                        New-Object -TypeName psobject -Property @{  UserName = $UserProfile
-                                                                    Url = $_
-                                                                    ComputerName = $env:COMPUTERNAME
-                                                                    Browser = 'Chrome'
-                                                                    DomainName = $DomainName }
-
-                    } #ForEach
-
-                } | Where-Object { $_.Url -match $SearchTerm }
-
-            } #process
-
-            end {} #end
-
-        } #function Get-ChromeHistory
-
-        function Get-InternetExplorerHistory {
-
-            [CmdletBinding()]
-            [OutputType([psobject])]
-
-            param (
-
-                [string]
-                $UserName,
-
-                [string]
-                $SearchTerm,
-
-                [string]
-                $SidRegEx = 'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+$'
-
-            ) #param
-
-            begin {} #begin
-
-            process {
-
-                Get-ChildItem -Path Registry::\HKEY_USERS -ErrorAction SilentlyContinue |
-
-                Where-Object { $_.Name -match $SidRegEx } | ForEach-Object {
-
-                    $UserAccount = Split-Path -Path $((
-                            [System.Security.Principal.SecurityIdentifier] $_.PSChildName
-                        ).Translate(
-                            [System.Security.Principal.NTAccount]
-                        ).Value.ToString()
-                    ) -Leaf
-
-                    if ($UserAccount -match $UserName) {
-
-                        $UserPath = $_ | Select-Object -ExpandProperty PSPath
-
-                        $KeyPath = "$UserPath\Software\Microsoft\Internet Explorer\TypedURLs"
-
-                        Get-Item -Path $KeyPath -ErrorAction SilentlyContinue | ForEach-Object {
-
-                            $Key = $_
-
-                            $Key.GetValueNames() | ForEach-Object {
-
-                                $EachUrl = $Key.GetValue($_).Trim()
-
-                                $DomainName = $EachUrl -replace 'http:\/\/','' -replace 'https:\/\/','' -replace '\/.*',''
-
-                                New-Object -TypeName psobject -Property @{  UserName = $UserAccount
-                                                                            Url = $EachUrl
-                                                                            ComputerName = $env:COMPUTERNAME
-                                                                            Browser = 'IE'
-                                                                            DomainName = $DomainName } |
-
-                                Sort-Object -Property Url -Unique |
-
-                                Where-Object { $_.Url -match $SearchTerm }
-
-                            } #ForEach Url
-
-                        } #ForEach Key
-
-                    } #if
-                    
-                } #ForEach RegPath
-
-            } #process
-
-            end {} #end
-
-        } #function Get-InternetExplorerHistory
-
-        function Get-FireFoxHistory {
-
-            param (
-
-                [string] $UserName = '.',
-
-                [string] $SearchTerm = '.',
-
-                [string] $UrlRegex = '(htt(p|ps))://([\w-]+\.)+[\w-]+(/[\w- ./?%&=]*)*?',
-
-                [string]
-                $UserExpression = '$(Split-Path -Path $(Resolve-Path -Path "$_\..\..\..\..\..\..") -Leaf)'
-
-            ) #param
-
-            begin {} #begin
-
-            process {
-
-                Resolve-Path -Path "$env:SystemDrive\Users\*\AppData\Roaming\Mozilla\Firefox\Profiles\*.default\" |
-
-                Where-Object { $($UserExpression | Invoke-Expression) -match $UserName } |
-
-                ForEach-Object {
-
-                    $EachPath = $_
-
-                    $SourceFile = Join-Path -Path $EachPath -ChildPath 'places.sqlite'
-
-                    $UserProfile = Split-Path -Path $(Resolve-Path -Path "$SourceFile\..\..\..\..\..\..\..") -Leaf
-
-                    Get-Content -Path $SourceFile |
-
-                    Select-String -Pattern $UrlRegex -AllMatches |
-
-                    ForEach-Object { ($_.Matches).Value } |
-
-                    Sort-Object -Unique |
-
-                    ForEach-Object {
-
-                        $EachUrl = $_
-
-                        $DomainName = $EachUrl -replace 'http:\/\/','' -replace 'https:\/\/','' -replace '\/.*',''
-
-                        New-Object -TypeName psobject -Property @{  UserName = $UserProfile
-                                                                    Url = $EachUrl
-                                                                    ComputerName = $env:COMPUTERNAME
-                                                                    Browser = 'FireFox'
-                                                                    DomainName = $DomainName }
-
-                    } #ForEach Url
-
-                } | Where-Object { $_.Url -match $SearchTerm }
-
-            } #process
-
-            end {} #end
-
-        } #function Get-FireFoxHistory
-
-        Write-Verbose -Message 'End of function definitions.'
-
-        Write-Verbose -Message 'Start of function packaging.'
-
-        $ChromeFunction = "function Get-ChromeHistory { ${function:Get-ChromeHistory} }"
-
-        $IeFunction = "function Get-InternetExplorerHistory { ${function:Get-InternetExplorerHistory} }"
-
-        $FireFoxFunction = "function Get-FireFoxHistory { ${function:Get-FireFoxHistory} }"
-
-        Write-Verbose -Message 'End of function packaging.'
-
-    } #begin
-
-    process {
-
-        $ComputerName | ForEach-Object {
-
-            $EachComputer = $_
-
-            Write-Verbose -Message "Starting execution on '$EachComputer'"
-            Write-Verbose -Message 'Checking for -AsJob switch parameter.'
-
-            if ($AsJob) {
-
-                Write-Verbose -Message 'Running asynchronously due to -AsJob switch parameter.'
-                Write-Verbose -Message "Check to see if we're running locally."
-
-                if ($EachComputer -match $env:COMPUTERNAME) {
-
-                    Write-Verbose -Message "We're running locally."
-                    Write-Verbose -Message 'Starting local job.'
-
-                    Start-Job -ScriptBlock {
-
-                        Get-ChromeHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-InternetExplorerHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-FireFoxHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                    } # Local Job
-
-                    Write-Verbose -Message 'Use "Get-Job" to see if it was successful or not.'
-
-                } else {
-
-                    Write-Verbose -Message "We're running remotely."
-                    Write-Verbose -Message 'Using Invoke-Command -AsJob to start remote job.'
-
-                    Invoke-Command -ComputerName $EachComputer -ScriptBlock {
-
-                        param (
-
-                            $UserName,
-                            $SearchTerm,
-                            $ChromeFunction,
-                            $IeFunction,
-                            $FireFoxFunction
-
-                        ) #param
-
-                        . ([ScriptBlock]::Create($ChromeFunction))
-
-                        . ([ScriptBlock]::Create($IeFunction))
-
-                        . ([ScriptBlock]::Create($FireFoxFunction))
-
-                        Get-ChromeHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-InternetExplorerHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-FireFoxHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                    } -ArgumentList $UserName,$SearchTerm,$ChromeFunction,$IeFunction,$FireFoxFunction -AsJob
-
-                    Write-Verbose -Message 'Remote job created.'
-                    Write-Verbose -Message 'Use "Get-Job" to see if it was successful or not.'
-
-                } #if ($EachComputer -match $env:COMPUTERNAME)
-
+﻿<#
+.SYNOPSIS
+Collect Chrome, Edge and Firefox history using read-only SQLite snapshots.
+.DESCRIPTION
+Windows only. Install sqlite3 >= 3.33 on each target and make it available in PATH,
+or pass -SqlitePath. No software is downloaded. Uses the SQLite backup API to
+capture a consistent database including WAL data. Browsers are never terminated.
+Requires permission to read selected profiles; outputs may contain sensitive URLs.
+IE TypedURLs is not a complete history source and is no longer collected.
+-AsJob returns jobs; use Receive-Job -Wait -AutoRemoveJob to retrieve results/errors.
+.EXAMPLE
+.\Get-BrowserHistory.ps1 -ComputerName workstation01 -UserName alice -SearchTerm example.com
+#>
+[CmdletBinding()]
+param(
+    [string[]]$ComputerName = @($env:COMPUTERNAME),
+    [string]$UserName = '*',
+    [string]$SearchTerm = '',
+    [string]$SqlitePath = 'sqlite3',
+    [string]$ProfileRoot,
+    [pscredential]$Credential,
+    [switch]$AsJob
+)
+$ErrorActionPreference = 'Stop'
+# A self-contained block works in both local jobs and remote sessions.
+$collector = {
+    param($UserPattern, $Term, $SqliteExecutable, $Root)
+    $ErrorActionPreference = 'Stop'
+    if ($env:OS -ne 'Windows_NT') { throw 'This collector requires Windows browser profile paths.' }
+    $sqlite = (Get-Command -Name $SqliteExecutable -CommandType Application -ErrorAction Stop).Source
+    if (-not $Root) { $Root = Join-Path $env:SystemDrive 'Users' }
+    function Invoke-HistorySqlite {
+        [CmdletBinding()]
+        param([string[]]$ArgumentList)
+        # Process streams use explicit UTF-8, including in Windows PowerShell and
+        # remote sessions without a console. Escape Windows argv, never a shell.
+        $quoted = foreach ($argument in $ArgumentList) {
+            $escaped = [regex]::Replace($argument, '(\*)"', '$1$1\"')
+            $escaped = [regex]::Replace($escaped, '(\+)$', '$1$1')
+            '"' + $escaped + '"'
+        }
+        $process = [Diagnostics.Process]::new()
+        try {
+            $process.StartInfo.FileName = $sqlite
+            $process.StartInfo.Arguments = $quoted -join ' '
+            $process.StartInfo.UseShellExecute = $false
+            $process.StartInfo.CreateNoWindow = $true
+            $process.StartInfo.RedirectStandardOutput = $true
+            $process.StartInfo.RedirectStandardError = $true
+            $process.StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+            $process.StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+            $null = $process.Start()
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(120000)) {
+                $process.Kill()
+                $process.WaitForExit()
+                throw 'SQLite command exceeded the two-minute timeout.'
+            }
+            $output = $stdout.GetAwaiter().GetResult()
+            $errorText = $stderr.GetAwaiter().GetResult()
+            if ($process.ExitCode -ne 0) { throw "SQLite exit code $($process.ExitCode): $errorText" }
+            $output
+        } finally { $process.Dispose() }
+    }
+    $sources = [System.Collections.Generic.List[object]]::new()
+    foreach ($userProfile in (Get-ChildItem -LiteralPath $Root -Directory -Force)) {
+        if ($userProfile.Name -notlike $UserPattern) { continue }
+        foreach ($browser in 'Chrome','Edge') {
+            $relative = if ($browser -eq 'Chrome') { 'AppData\Local\Google\Chrome\User Data' } else { 'AppData\Local\Microsoft\Edge\User Data' }
+            $browserRoot = Join-Path $userProfile.FullName $relative
+            if (-not (Test-Path -LiteralPath $browserRoot)) { continue }
+            foreach ($browserProfile in (Get-ChildItem -LiteralPath $browserRoot -Directory)) {
+                $database = Join-Path $browserProfile.FullName 'History'
+                if (Test-Path -LiteralPath $database -PathType Leaf) {
+                    $sources.Add([pscustomobject]@{ User = $userProfile.Name; Browser = $browser; Profile = $browserProfile.Name; Database = $database })
+                }
+            }
+        }
+        $browserRoot = Join-Path $userProfile.FullName 'AppData\Roaming\Mozilla\Firefox\Profiles'
+        if (Test-Path -LiteralPath $browserRoot) {
+            foreach ($browserProfile in (Get-ChildItem -LiteralPath $browserRoot -Directory)) {
+                $database = Join-Path $browserProfile.FullName 'places.sqlite'
+                if (Test-Path -LiteralPath $database -PathType Leaf) {
+                    $sources.Add([pscustomobject]@{ User = $userProfile.Name; Browser = 'Firefox'; Profile = $browserProfile.Name; Database = $database })
+                }
+            }
+        }
+    }
+    foreach ($source in $sources) {
+        $snapshot = Join-Path ([IO.Path]::GetTempPath()) ("history-$([guid]::NewGuid()).sqlite")
+        try {
+            # The destination is generated by this script; escape the SQLite dot-command argument.
+            $destination = $snapshot.Replace('\','/')
+            try { $null = Invoke-HistorySqlite -ArgumentList @('-readonly', $source.Database, '.timeout 5000', ".backup `"$destination`"") }
+            catch { throw "SQLite snapshot failed for $($source.Database): $_" }
+            $sql = if ($source.Browser -eq 'Firefox') {
+                "SELECT url, title, visit_count AS VisitCount, strftime('%Y-%m-%dT%H:%M:%fZ',last_visit_date/1000000.0,'unixepoch') AS LastVisitUtc FROM moz_places WHERE last_visit_date IS NOT NULL;"
             } else {
-
-                Write-Verbose -Message 'Running synchronously due to lack of -AsJob switch parameter.'
-                Write-Verbose -Message "Check to see if we're running locally."
-
-                if ($EachComputer -match $env:COMPUTERNAME) {
-
-                    Write-Verbose -Message "We're running locally."
-
-                    Get-ChromeHistory -UserName $UserName -SearchTerm $SearchTerm |
-                        Select-Object -Property ComputerName,UserName,Browser,DomainName,Url
-
-                    Get-InternetExplorerHistory -UserName $UserName -SearchTerm $SearchTerm |
-                        Select-Object -Property ComputerName,UserName,Browser,DomainName,Url
-
-                    Get-FireFoxHistory -UserName $UserName -SearchTerm $SearchTerm |
-                        Select-Object -Property ComputerName,UserName,Browser,DomainName,Url
-
-                } else {
-
-                    Write-Verbose -Message "We're running remotely."
-                    Write-Verbose -Message 'Using Invoke-Command -AsJob to start remote job.'
-
-                    Invoke-Command -ComputerName $EachComputer -ScriptBlock {
-
-                        param (
-
-                            $UserName,
-                            $SearchTerm,
-                            $ChromeFunction,
-                            $IeFunction,
-                            $FireFoxFunction
-
-                        ) #param
-
-                        . ([ScriptBlock]::Create($ChromeFunction))
-
-                        . ([ScriptBlock]::Create($IeFunction))
-
-                        . ([ScriptBlock]::Create($FireFoxFunction))
-
-                        Get-ChromeHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-InternetExplorerHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                        Get-FireFoxHistory -UserName $UserName -SearchTerm $SearchTerm
-
-                    } -ArgumentList $UserName,$SearchTerm,$ChromeFunction,$IeFunction,$FireFoxFunction |
-
-                    Select-Object -Property ComputerName,UserName,Browser,DomainName,Url
-
-                } #if ($EachComputer -match $env:COMPUTERNAME)
-
-            } #if ($AsJob)
-
-        } #ForEach $ComputerName
-
-    } #process
-
-    end {} #end
-
-} #function Get-BrowserHistory
-
-
-# Prompt for the computer name
-$compname = Read-Host "Enter the Computer name or IP address"
-
-# Run the function
-Get-BrowserHistory -ComputerName $compname | Out-GridView
-
-Write-Host "Script Complete" -ForegroundColor Green
+                "SELECT url, title, visit_count AS VisitCount, strftime('%Y-%m-%dT%H:%M:%fZ',(last_visit_time/1000000.0)-11644473600,'unixepoch') AS LastVisitUtc FROM urls WHERE last_visit_time > 0;"
+            }
+            try { $json = Invoke-HistorySqlite -ArgumentList @('-readonly','-json',$snapshot,$sql) }
+            catch { throw "SQLite query failed for $($source.Database): $_" }
+            if (-not $json) { continue }
+            foreach ($record in (($json -join "`n") | ConvertFrom-Json)) {
+                if ($Term -and $record.url.IndexOf($Term, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+                $uri = $null
+                $domain = if ([uri]::TryCreate($record.url, [UriKind]::Absolute, [ref]$uri)) { $uri.Host } else { $null }
+                [pscustomobject]@{
+                    ComputerName = $env:COMPUTERNAME
+                    UserName = $source.User
+                    Browser = $source.Browser
+                    Profile = $source.Profile
+                    Url = $record.url
+                    DomainName = $domain
+                    Title = $record.title
+                    VisitCount = $record.VisitCount
+                    LastVisitUtc = ([datetimeoffset]$record.LastVisitUtc).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+                }
+            }
+        } finally {
+            if (Test-Path -LiteralPath $snapshot) { Remove-Item -LiteralPath $snapshot -Force }
+        }
+    }
+}
+foreach ($computer in $ComputerName) {
+    $local = $computer -in @('.', 'localhost', $env:COMPUTERNAME)
+    if ($local -and -not $Credential) {
+        if ($AsJob) { Start-Job -ScriptBlock $collector -ArgumentList $UserName,$SearchTerm,$SqlitePath,$ProfileRoot }
+        else { & $collector $UserName $SearchTerm $SqlitePath $ProfileRoot }
+    } else {
+        $invoke = @{ ComputerName = $computer; ScriptBlock = $collector; ArgumentList = $UserName,$SearchTerm,$SqlitePath,$ProfileRoot; AsJob = $AsJob }
+        if ($Credential) { $invoke.Credential = $Credential }
+        Invoke-Command @invoke
+    }
+}
