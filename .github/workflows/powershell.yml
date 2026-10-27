@@ -30,6 +30,7 @@ jobs:
             $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
           }
           $moduleRoot = Join-Path $env:RUNNER_TEMP modules
+          $null = New-Item -ItemType Directory -Path $moduleRoot -Force
           Save-Module Pester -RequiredVersion 5.7.1 -Path $moduleRoot -Force -Repository PSGallery
           Save-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Path $moduleRoot -Force -Repository PSGallery
           "TOOLKIT_TEST_MODULES=$moduleRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
