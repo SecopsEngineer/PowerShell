@@ -169,6 +169,18 @@ reported as an error rather than silently treated as "no users" or "no activity"
 - `-AsJob` returns job objects. Retrieve results and errors with
   `Receive-Job -Wait -AutoRemoveJob`. Remote hosts need sqlite3 installed themselves.
 
+## Security reporting and licensing
+
+Report vulnerabilities through the private route described in [SECURITY.md](SECURITY.md).
+Do not disclose vulnerability details or private exports in public issues. The
+GitHub reporting feature must be enabled separately by the repository owner;
+[maintainer setup](docs/Maintenance.md) explains how to verify it.
+
+The root [LICENSE](LICENSE) remains the Unlicense. Consult
+[third-party provenance and notices](THIRD_PARTY.md) and [preserved license texts](LICENSES/)
+for identified upstream material. The historical O365Reports permission question
+is still open; the review does not claim all historical code has been cleared.
+
 ## Validation and contribution
 
 Use Pester **5.7.1**, PSScriptAnalyzer **1.24.0**, and sqlite3 **>=3.33** on Windows.

@@ -1,38 +1,31 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a functional PowerShell-script bug using synthetic, redacted examples
 title: ''
 labels: ''
 assignees: ''
-
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**Security vulnerabilities**
+Do not disclose vulnerability details, credentials or private reports here.
+Follow [SECURITY.md](https://github.com/SecopsEngineer/PowerShell/security/policy)
+for private reporting and the details-free fallback if that channel is unavailable.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**Affected script and commit**
+Script path and the exact commit SHA you ran.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**Environment**
+- Operating system:
+- PowerShell version and edition:
+- Relevant module names and versions:
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**What happened?**
+Describe expected and observed behavior.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**Minimal reproduction**
+Include the command and minimal synthetic input. Replace real identities, hosts,
+tenants and organization data. Never include passwords, tokens, private keys,
+browser histories or unredacted screenshots/exports.
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
-
-**Additional context**
-Add any other context about the problem here.
+**Error output**
+Paste only the relevant redacted error and state whether it reproduces on main.

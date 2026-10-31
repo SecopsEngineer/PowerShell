@@ -7,6 +7,11 @@ requires appropriate licensing and roles. NoAvailableRecord does NOT mean never
 signed in: data is limited by retention. API failures terminate the report.
 .EXAMPLE
 .\GraphAPI-GuestUserStatus.ps1 -TenantId TENANT-GUID -OutputPath .\guests.csv
+.NOTES
+Historical report source: Tony Redmond, Office365itpros,
+ReportLastAccountSignIn-Mg.PS1. Upstream copyright (c) 2023 Tony Redmond, MIT.
+This replacement changes connection handling, properties, output and error behavior.
+See THIRD_PARTY.md and LICENSES/Office365itpros-MIT.txt for source and notice.
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$TenantId, [string]$OutputPath, [switch]$Force)

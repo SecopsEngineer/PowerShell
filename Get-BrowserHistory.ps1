@@ -10,6 +10,12 @@ IE TypedURLs is not a complete history source and is no longer collected.
 -AsJob returns jobs; use Receive-Job -Wait -AutoRemoveJob to retrieve results/errors.
 .EXAMPLE
 .\Get-BrowserHistory.ps1 -ComputerName workstation01 -UserName alice -SearchTerm example.com
+.NOTES
+Historical regex-based source: @oregon-national-guard/cyberspace-operations,
+oregon-national-guard/powershell Get-BrowserHistory.ps1. The current implementation
+replaces that collection logic with SQLite snapshots. Historical source and the
+complete upstream notice are preserved in THIRD_PARTY.md and
+LICENSES/Oregon-National-Guard-LICENCE.txt, including its specific-script exception.
 #>
 [CmdletBinding()]
 param(

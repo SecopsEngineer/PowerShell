@@ -119,6 +119,12 @@ This Code of Conduct is adapted from the [Contributor Covenant][homepage],
 version 2.0, available at
 https://www.contributor-covenant.org/version/2/0/code_of_conduct.html.
 
+Contributor Covenant v2.0 is provided under Creative Commons Attribution 4.0
+International: https://creativecommons.org/licenses/by/4.0/legalcode.
+This adaptation replaces the generic enforcement-contact placeholder with
+repository-maintainer contact guidance. See [THIRD_PARTY.md](THIRD_PARTY.md)
+for the historical upstream license reference.
+
 Community Impact Guidelines were inspired by [Mozilla's code of conduct
 enforcement ladder](https://github.com/mozilla/diversity).
 
