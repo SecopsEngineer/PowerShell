@@ -18,3 +18,17 @@ any additional non-production integration validation and its limits in the PR.
 
 Preserve author/source attribution. Confirm redistribution terms before adding
 third-party code. Never include real report exports, browser history or secrets.
+
+## Vulnerability reports
+
+Follow [SECURITY.md](SECURITY.md) rather than opening a public vulnerability issue
+or pull request. Public bug reports must use synthetic examples and redact private
+data. Do not submit a test vulnerability simply to check the reporting button.
+
+## Source and license evidence
+
+For imported or adapted material, provide its source URL and immutable revision,
+author/rights-holder notice, license or written permission, and a description of
+local modifications. Update [THIRD_PARTY.md](THIRD_PARTY.md) and preserve required
+texts in `LICENSES/`. Public availability is not evidence of permission to copy.
+Do not add material with unclear terms or remove existing attribution.

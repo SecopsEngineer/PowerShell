@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability reporting
+    url: https://github.com/SecopsEngineer/PowerShell/security/policy
+    about: Read the private reporting policy; do not disclose vulnerability details in public issues.
